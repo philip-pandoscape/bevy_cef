@@ -32,6 +32,8 @@ pub const INIT_SCRIPT_KEY: &str = "init_script";
 pub const PROCESS_MESSAGE_BRP: &str = "brp";
 pub const PROCESS_MESSAGE_HOST_EMIT: &str = "host-emit";
 pub const PROCESS_MESSAGE_JS_EMIT: &str = "js-emit";
+/// A host message whose payload reaches the page's listener as a string, as it was sent.
+pub const PROCESS_MESSAGE_HOST_EMIT_RAW: &str = "host-emit-raw";
 
 /// A BRP reply sent from the browser process to the render process.
 ///
@@ -152,6 +154,9 @@ impl ImplRenderProcessHandler for RenderProcessHandlerBuilder {
                 }
                 PROCESS_MESSAGE_HOST_EMIT => {
                     handle_listen_message(message, browser, frame, ctx);
+                }
+                PROCESS_MESSAGE_HOST_EMIT_RAW => {
+                    handle_listen_raw_message(message, browser, frame, ctx);
                 }
                 _ => {}
             }
@@ -377,6 +382,45 @@ fn handle_listen_message(
             obj.as_mut(),
             Some(&[json_to_v8(value)]),
         );
+        ctx.exit();
+    }
+}
+
+/// Hands a raw host message to the page's listener as a string: no JSON is parsed here, and the
+/// page parses it once itself (a large message costs one native `JSON.parse`, not a value built
+/// up through V8's API a piece at a time).
+fn handle_listen_raw_message(
+    message: &ProcessMessage,
+    browser: &mut Browser,
+    frame: &mut Frame,
+    mut ctx: V8Context,
+) {
+    let Some(argument_list) = message.argument_list() else {
+        return;
+    };
+    let id = argument_list.string(0).into_string();
+    let payload = argument_list.string(1).into_string();
+    let key = context_key(browser, frame);
+    let callback = LISTEN_EVENTS
+        .lock()
+        .ok()
+        .and_then(|events| events.get(&key)?.get(&id).cloned());
+    let Some(callback) = callback else {
+        return;
+    };
+    if ctx.enter() != 0 {
+        let mut obj = v8_value_create_object(
+            Some(&mut V8DefaultAccessorBuilder::build()),
+            Some(&mut V8DefaultInterceptorBuilder::build()),
+        );
+        let text = v8_value_create_string(Some(&payload.as_str().into()));
+        if let Some(text) = text {
+            callback.execute_function_with_context(
+                Some(&mut ctx),
+                obj.as_mut(),
+                Some(&[Some(text)]),
+            );
+        }
         ctx.exit();
     }
 }

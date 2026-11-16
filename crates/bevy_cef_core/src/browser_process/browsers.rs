@@ -151,6 +151,11 @@ impl Browsers {
                 // via on_accelerated_paint instead of CPU buffers via on_paint.
                 #[cfg(target_os = "macos")]
                 shared_texture_enabled: true as _,
+                // Windows GPU OSR: shared D3D11 textures through on_accelerated_paint when the
+                // embedder has a handler for them (`windows_paint`); else CPU buffers through on_paint.
+                #[cfg(target_os = "windows")]
+                shared_texture_enabled:
+                    crate::browser_process::windows_paint::accelerated_paint_enabled() as _,
                 #[cfg(target_os = "macos")]
                 parent_view: match _window_handle {
                     Some(RawWindowHandle::AppKit(handle)) => handle.ns_view.as_ptr(),
@@ -186,6 +191,10 @@ impl Browsers {
             )),
             Some(&uri.into()),
             Some(&BrowserSettings {
+                #[cfg(target_os = "windows")]
+                windowless_frame_rate: crate::browser_process::windows_paint::windowless_frame_rate(
+                ),
+                #[cfg(not(target_os = "windows"))]
                 windowless_frame_rate: 60,
                 ..Default::default()
             }),
@@ -454,6 +463,45 @@ impl Browsers {
                 Some(&mut process_message),
             );
         };
+    }
+
+    /// Sends `payload` to the page's `window.cef.listen(id, ..)` callback as a string, untouched:
+    /// neither parsed nor re-encoded on the way (unlike [`Self::emit_event`], whose payload
+    /// becomes a JavaScript value). For large messages the page parses itself, once.
+    pub fn emit_raw(&self, webview: &Entity, id: &str, payload: &str) {
+        if let Some(browser) = self.browsers.get(webview)
+            && let Some(frame) = browser.client.main_frame()
+            && let Some(mut process_message) =
+                process_message_create(Some(&PROCESS_MESSAGE_HOST_EMIT_RAW.into()))
+            && let Some(argument_list) = process_message.argument_list()
+        {
+            argument_list.set_string(0, Some(&id.into()));
+            argument_list.set_string(1, Some(&payload.into()));
+            frame.send_process_message(
+                ProcessId::from(cef_dll_sys::cef_process_id_t::PID_RENDERER),
+                Some(&mut process_message),
+            );
+        };
+    }
+
+    /// How many times a second the webview's browser paints (CEF takes 1 to 240 on Windows).
+    pub fn set_frame_rate(&self, webview: &Entity, rate: i32) {
+        if let Some(browser) = self.browsers.get(webview) {
+            browser.host.set_windowless_frame_rate(rate.clamp(1, 240));
+        }
+    }
+
+    /// Hides the webview's browser (it stops painting and its page is told it is hidden) or shows
+    /// it again, painting its whole view at once.
+    pub fn set_hidden(&self, webview: &Entity, hidden: bool) {
+        if let Some(browser) = self.browsers.get(webview) {
+            browser.host.was_hidden(hidden as _);
+            if !hidden {
+                browser.host.invalidate(cef::PaintElementType::from(
+                    cef_dll_sys::cef_paint_element_type_t::PET_VIEW,
+                ));
+            }
+        }
     }
 
     pub fn resize(&self, webview: &Entity, size: Vec2) {

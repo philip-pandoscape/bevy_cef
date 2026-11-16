@@ -70,6 +70,22 @@ pub struct CefPlugin {
     /// wall-clock time. A flush also follows every main-frame load end in a profile webview.
     /// Defaults to 5 seconds.
     pub cookie_flush_interval: Duration,
+    /// The program CEF starts for its other processes (the renderer, the GPU, the network).
+    /// `None` looks for `bevy_cef_render_process` beside the executable and, when it is not
+    /// there, CEF starts the executable itself (see `early_exit_if_subprocess`). A path given
+    /// and missing is a start-up error, never the executable started in its stead.
+    pub render_process_path: Option<std::path::PathBuf>,
+    /// Adds `bevy_remote`'s `RemotePlugin` when the app has none, for a page's
+    /// `window.cef.brp`. Off, nothing is added: an app that adds its own later keeps it, and
+    /// with none a page's request is refused. Defaults to `true`.
+    pub remote: bool,
+    /// Applies a page's cursor (its CSS `cursor`) to the windows. Off, an app that draws its own
+    /// cursor keeps it. Defaults to `true`.
+    pub system_cursor: bool,
+    /// Keeps every webview to these schemes (`Some(vec!["myapp".into()])`): a request for any
+    /// other is cancelled before it is made, and every permission prompt and media request a
+    /// page makes is refused. `None` (the default) restricts nothing.
+    pub allowed_schemes: Option<Vec<String>>,
 }
 
 impl Default for CefPlugin {
@@ -81,6 +97,10 @@ impl Default for CefPlugin {
             custom_schemes: Default::default(),
             sandbox: Default::default(),
             cookie_flush_interval: Duration::from_secs(5),
+            render_process_path: None,
+            remote: true,
+            system_cursor: true,
+            allowed_schemes: None,
         }
     }
 }
@@ -91,6 +111,9 @@ impl Plugin for CefPlugin {
         // CEF's OnRegisterCustomSchemes fires during initialize; schemes registered
         // afterward are silently ignored.
         bevy_cef_core::prelude::init_registered_schemes(self.custom_schemes.clone());
+        if let Some(schemes) = &self.allowed_schemes {
+            bevy_cef_core::prelude::allow_only_schemes(schemes.clone());
+        }
 
         // Resolve the sandbox decision and compute the effective command line once.
         let no_sandbox = resolve_no_sandbox(self.sandbox);
@@ -136,6 +159,7 @@ impl Plugin for CefPlugin {
             extensions: self.extensions.clone(),
             root_cache_path: self.root_cache_path.clone(),
             no_sandbox,
+            render_process_path: self.render_process_path.clone(),
         };
         if let Err(e) = message_loop.start(app) {
             error!("bevy_cef: CEF failed to start: {e}");
@@ -153,7 +177,9 @@ impl Plugin for CefPlugin {
                 IpcPlugin,
                 KeyboardPlugin,
                 FocusPlugin,
-                SystemCursorIconPlugin,
+                SystemCursorIconPlugin {
+                    follow: self.system_cursor,
+                },
                 DragPlugin,
                 ResizePlugin,
                 NavigationPlugin,
@@ -164,7 +190,7 @@ impl Plugin for CefPlugin {
             .add_plugins(ProfilePlugin {
                 cookie_flush_interval: self.cookie_flush_interval,
             });
-        if !app.is_plugin_added::<RemotePlugin>() {
+        if self.remote && !app.is_plugin_added::<RemotePlugin>() {
             app.add_plugins(RemotePlugin::default());
         }
     }

@@ -1,5 +1,8 @@
 use cef::rc::{Rc, RcImpl};
-use cef::{ImplRequestContextHandler, RequestContext, WrapRequestContextHandler, sys};
+use cef::{
+    Browser, CefString, Frame, ImplRequestContextHandler, Request, RequestContext,
+    ResourceRequestHandler, WrapRequestContextHandler, sys,
+};
 use std::cell::Cell;
 
 /// ## Reference
@@ -63,6 +66,20 @@ impl ImplRequestContextHandler for RequestContextHandlerBuilder {
         if let Some(ready) = &self.ready {
             ready.set(true);
         }
+    }
+
+    /// With an allow-list set (`local_only`), every request first passes its filter.
+    fn resource_request_handler(
+        &self,
+        _browser: Option<&mut Browser>,
+        _frame: Option<&mut Frame>,
+        _request: Option<&mut Request>,
+        _is_navigation: ::std::os::raw::c_int,
+        _is_download: ::std::os::raw::c_int,
+        _request_initiator: Option<&CefString>,
+        _disable_default_handling: Option<&mut ::std::os::raw::c_int>,
+    ) -> Option<ResourceRequestHandler> {
+        crate::browser_process::local_only::resource_request_handler()
     }
 
     #[inline]

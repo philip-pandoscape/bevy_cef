@@ -213,6 +213,25 @@ impl ImplRenderHandler for RenderHandlerBuilder {
         }));
     }
 
+    /// Windows GPU OSR: CEF delivers the main view as a shared texture when the browser was
+    /// created with a handler set (`windows_paint`); the handler imports and copies it during the
+    /// call, while its handle is valid. Popups (`PET_POPUP`) are dropped, as on macOS.
+    #[cfg(target_os = "windows")]
+    fn on_accelerated_paint(
+        &self,
+        _browser: Option<&mut Browser>,
+        type_: PaintElementType,
+        _dirty_rects: Option<&[cef::Rect]>,
+        info: Option<&AcceleratedPaintInfo>,
+    ) {
+        if !matches!(type_.as_ref(), cef_paint_element_type_t::PET_VIEW) {
+            return;
+        }
+        if let Some(info) = info {
+            crate::browser_process::windows_paint::deliver(self.webview, info);
+        }
+    }
+
     #[cfg(target_os = "macos")]
     fn on_accelerated_paint(
         &self,

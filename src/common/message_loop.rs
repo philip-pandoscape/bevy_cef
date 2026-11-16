@@ -25,6 +25,11 @@ pub enum CefStartupError {
     },
     /// The CEF library could not be loaded.
     LibraryLoad,
+    /// The render-process program the plugin was given is not there.
+    RenderProcessMissing {
+        /// The path it was given.
+        path: String,
+    },
     /// `cef_initialize` returned failure.
     Initialize {
         /// The process exit code CEF reported through `cef_get_exit_code`.
@@ -60,6 +65,9 @@ impl std::fmt::Display for CefStartupError {
                 )
             }
             Self::LibraryLoad => write!(f, "failed to load the CEF library"),
+            Self::RenderProcessMissing { path } => {
+                write!(f, "the render-process program '{path}' is not there")
+            }
             Self::Initialize { exit_code } => {
                 write!(f, "cef_initialize failed with exit code {exit_code}")
             }
@@ -102,6 +110,10 @@ pub struct MessageLoopPlugin {
     pub extensions: CefExtensions,
     pub root_cache_path: Option<String>,
     pub no_sandbox: bool,
+    /// The program CEF starts for its other processes; `None` looks for
+    /// `bevy_cef_render_process` beside the executable, and CEF starts the executable itself
+    /// when it is not there.
+    pub render_process_path: Option<std::path::PathBuf>,
 }
 
 impl MessageLoopPlugin {
@@ -114,7 +126,16 @@ impl MessageLoopPlugin {
     /// library cannot be loaded (macOS), or `cef_initialize` fails.
     pub(crate) fn start(&self, app: &mut App) -> Result<(), CefStartupError> {
         #[cfg(not(target_os = "macos"))]
-        let render_process_binary = render_process_path();
+        let render_process_binary = match &self.render_process_path {
+            // A program named but missing is an error, never the executable started in its stead.
+            Some(path) if !path.exists() => {
+                return Err(CefStartupError::RenderProcessMissing {
+                    path: path.display().to_string(),
+                });
+            }
+            Some(path) => Some(path.clone()),
+            None => render_process_path(),
+        };
 
         #[cfg(target_os = "macos")]
         load_cef_library(app)?;

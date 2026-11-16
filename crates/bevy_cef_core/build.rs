@@ -38,6 +38,20 @@ mod windows {
         fs::create_dir_all(&examples_dir).unwrap();
         copy_cef_runtime_files(&target_dir, &examples_dir);
         copy_render_process_binary(&target_dir, &examples_dir);
+
+        // Test programs run from `deps/`, and libcef.dll is linked at load time: without it
+        // beside them they cannot start.
+        let deps_dir = target_dir.join("deps");
+        fs::create_dir_all(&deps_dir).unwrap();
+        copy_cef_runtime_files(&target_dir, &deps_dir);
+    }
+
+    /// Links `dest` to `src` (no space taken on the same volume), else copies it.
+    fn place(src: &Path, dest: &Path) -> std::io::Result<()> {
+        if dest.exists() {
+            fs::remove_file(dest)?;
+        }
+        fs::hard_link(src, dest).or_else(|_| fs::copy(src, dest).map(|_| ()))
     }
 
     fn find_cef_dir() -> Option<PathBuf> {
@@ -133,7 +147,7 @@ mod windows {
                         continue;
                     }
                 }
-                fs::copy(&path, &dest).unwrap_or_else(|e| {
+                place(&path, &dest).unwrap_or_else(|e| {
                     panic!("Failed to copy {:?} to {:?}: {}", path, dest, e);
                 });
             }

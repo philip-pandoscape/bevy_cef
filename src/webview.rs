@@ -217,7 +217,9 @@ pub(crate) fn scroll_delta(unit: MouseScrollUnit, x: f32, y: f32) -> Vec2 {
 pub(crate) struct BrowserCreation<'w, 's> {
     requester: Res<'w, Requester>,
     ipc_event_sender: Res<'w, IpcEventRawSender>,
-    brp_sender: Res<'w, BrpSender>,
+    /// Bevy's remote protocol, for a page's `window.cef.brp`: absent when the app has none
+    /// (`CefPlugin::remote` off), when a page's request is refused.
+    brp_sender: Option<Res<'w, BrpSender>>,
     cursor_icon_sender: Res<'w, SystemCursorIconSender>,
     drag_regions_sender: Res<'w, DraggableRegionSender>,
     load_handler_sender: Res<'w, LoadHandlerSender>,
@@ -257,7 +259,13 @@ impl BrowserCreation<'_, '_> {
             args.dpr,
             self.requester.clone(),
             self.ipc_event_sender.0.clone(),
-            self.brp_sender.clone(),
+            self.brp_sender.as_deref().map_or_else(
+                || async_channel::unbounded::<bevy_remote::BrpMessage>().0,
+                |sender| {
+                    let sender: &async_channel::Sender<bevy_remote::BrpMessage> = sender;
+                    sender.clone()
+                },
+            ),
             self.cursor_icon_sender.clone(),
             self.drag_regions_sender.0.clone(),
             self.load_handler_sender.0.clone(),

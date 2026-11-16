@@ -115,6 +115,11 @@ impl Clone for ClientHandlerBuilder {
 }
 
 impl ImplClient for ClientHandlerBuilder {
+    /// With an allow-list set (`local_only`), every permission a page asks for is refused.
+    fn permission_handler(&self) -> Option<cef::PermissionHandler> {
+        crate::browser_process::local_only::permission_handler()
+    }
+
     fn render_handler(&self) -> Option<RenderHandler> {
         Some(self.render_handler.clone())
     }

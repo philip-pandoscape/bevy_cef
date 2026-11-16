@@ -3,12 +3,20 @@ use bevy::prelude::*;
 use bevy::window::{CursorIcon, SystemCursorIcon};
 
 /// This plugin manages the system cursor icon by receiving updates from CEF and applying them to the application window's cursor icon.
-pub(super) struct SystemCursorIconPlugin;
+pub(super) struct SystemCursorIconPlugin {
+    /// Whether a page's cursor is applied to the windows (`CefPlugin::system_cursor`).
+    pub(super) follow: bool,
+}
+
+/// Whether a page's cursor is applied to the windows.
+#[derive(Resource, Debug, Clone, Copy)]
+pub(crate) struct FollowPageCursor(pub(crate) bool);
 
 impl Plugin for SystemCursorIconPlugin {
     fn build(&self, app: &mut App) {
         let (tx, rx) = async_channel::unbounded();
-        app.insert_resource(SystemCursorIconSender(tx))
+        app.insert_resource(FollowPageCursor(self.follow))
+            .insert_resource(SystemCursorIconSender(tx))
             .insert_resource(SystemCursorIconReceiver(rx))
             .init_resource::<crate::resize::cursor::SystemCursorOverride>()
             .add_systems(Update, update_cursor_icon);
@@ -25,8 +33,14 @@ fn update_cursor_icon(
     mut commands: Commands,
     cursor_icon_receiver: Res<SystemCursorIconReceiver>,
     cursor_override: Res<crate::resize::cursor::SystemCursorOverride>,
-    windows: Query<Entity>,
+    follow: Res<FollowPageCursor>,
+    windows: Query<Entity, With<Window>>,
 ) {
+    // Not following the page: what it asks for is drained and left.
+    if !follow.0 {
+        while cursor_icon_receiver.0.try_recv().is_ok() {}
+        return;
+    }
     // Override takes priority over CEF cursor.
     if let Some(override_icon) = cursor_override.get() {
         for entity in windows.iter() {
