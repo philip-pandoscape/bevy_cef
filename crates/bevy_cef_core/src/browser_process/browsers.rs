@@ -504,6 +504,16 @@ impl Browsers {
         }
     }
 
+    /// Asks the webview's browser to paint its whole view again, even with nothing changed on its
+    /// page: a quiet page paints nothing otherwise, and the embedder may want a picture now.
+    pub fn invalidate(&self, webview: &Entity) {
+        if let Some(browser) = self.browsers.get(webview) {
+            browser.host.invalidate(cef::PaintElementType::from(
+                cef_dll_sys::cef_paint_element_type_t::PET_VIEW,
+            ));
+        }
+    }
+
     pub fn resize(&self, webview: &Entity, size: Vec2) {
         if let Some(browser) = self.browsers.get(webview) {
             browser.size.set(size);
