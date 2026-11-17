@@ -21,6 +21,21 @@ type Handler = Rc<dyn Fn(Entity, &AcceleratedPaintInfo)>;
 thread_local! {
     static HANDLER: RefCell<Option<Handler>> = const { RefCell::new(None) };
     static FRAME_RATE: Cell<i32> = const { Cell::new(60) };
+    static EMBEDDER_BEGIN_FRAMES: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Lets the embedder drive compositing on Windows: browsers created from now on are created with
+/// `external_begin_frame_enabled`, and paint only when asked
+/// ([`crate::prelude::Browsers::begin_frame`]), so a page's frames can be made in step with the
+/// app's own instead of on CEF's timer. bevy_cef sends none itself on Windows: an embedder that
+/// sets this sends them. Off unless set (see [`crate::prelude::EXTERNAL_BEGIN_FRAME`] for why).
+pub fn set_embedder_begin_frames(on: bool) {
+    EMBEDDER_BEGIN_FRAMES.with(|b| b.set(on));
+}
+
+/// Whether browsers created now wait for the embedder's begin frames.
+pub fn embedder_begin_frames() -> bool {
+    EMBEDDER_BEGIN_FRAMES.with(Cell::get)
 }
 
 /// Asks CEF for shared GPU textures on Windows, and hands each frame of a webview's main view to

@@ -12,8 +12,8 @@ pub mod drag_handler;
 mod extensions;
 mod initial_zoom;
 mod life_span_handler;
-mod local_only;
 pub mod load_handler;
+mod local_only;
 mod localhost;
 mod message_pump;
 mod profiles;
@@ -34,11 +34,14 @@ pub use drag_handler::*;
 pub use extensions::*;
 pub use initial_zoom::*;
 pub use life_span_handler::*;
-pub use local_only::{allow_only_schemes, scheme_allowed};
 pub use load_handler::*;
+pub use local_only::{allow_only_schemes, scheme_allowed};
 pub use localhost::*;
 pub use message_pump::*;
 pub use renderer_handler::*;
 pub use request_context_handler::*;
 #[cfg(target_os = "windows")]
-pub use windows_paint::{accelerated_paint_enabled, set_accelerated_paint_handler, set_windowless_frame_rate, windowless_frame_rate};
+pub use windows_paint::{
+    accelerated_paint_enabled, embedder_begin_frames, set_accelerated_paint_handler,
+    set_embedder_begin_frames, set_windowless_frame_rate, windowless_frame_rate,
+};

@@ -189,7 +189,11 @@ impl Plugin for MessageLoopPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Main,
-            cef_do_message_loop_work.run_if(not(resource_exists::<CefShutDown>)),
+            // Before the frame's own schedules: what CEF has for the app (a page's messages,
+            // its pictures) is there when they run, not a frame later.
+            cef_do_message_loop_work
+                .before(Main::run_main)
+                .run_if(not(resource_exists::<CefShutDown>)),
         );
 
         #[cfg(all(target_os = "macos", feature = "debug"))]

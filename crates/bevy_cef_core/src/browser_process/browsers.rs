@@ -43,7 +43,8 @@ pub use keyboard::*;
 /// inspected webview's rAF and painting (observed with a CEF 152.0.6 runtime; not
 /// re-checked against other CEF versions). This one flag decides both
 /// `WindowInfo::external_begin_frame_enabled` and whether the `send_external_begin_frame`
-/// system is scheduled, so the two can never disagree.
+/// system is scheduled, so the two can never disagree. (On Windows an embedder may drive
+/// compositing itself: `set_embedder_begin_frames`, with [`Browsers::begin_frame`].)
 pub const EXTERNAL_BEGIN_FRAME: bool = !cfg!(target_os = "windows");
 
 pub struct WebviewBrowser {
@@ -146,6 +147,11 @@ impl Browsers {
         let browser = browser_host_create_browser_sync(
             Some(&WindowInfo {
                 windowless_rendering_enabled: true as _,
+                // Windows: only when the embedder has said it sends the begin frames itself.
+                #[cfg(target_os = "windows")]
+                external_begin_frame_enabled:
+                    crate::browser_process::windows_paint::embedder_begin_frames() as _,
+                #[cfg(not(target_os = "windows"))]
                 external_begin_frame_enabled: EXTERNAL_BEGIN_FRAME as _,
                 // macOS GPU OSR: ask CEF to deliver GPU shared textures (IOSurface)
                 // via on_accelerated_paint instead of CPU buffers via on_paint.
@@ -290,6 +296,15 @@ impl Browsers {
 
     pub fn send_external_begin_frame(&self) {
         for browser in self.browsers.values() {
+            browser.host.send_external_begin_frame();
+        }
+    }
+
+    /// Asks one webview's browser for a frame now: for an embedder that drives compositing
+    /// itself (on Windows, after `set_embedder_begin_frames`). A browser that was not created
+    /// for it ignores the call.
+    pub fn begin_frame(&self, webview: &Entity) {
+        if let Some(browser) = self.browsers.get(webview) {
             browser.host.send_external_begin_frame();
         }
     }

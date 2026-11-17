@@ -37,3 +37,29 @@ impl Default for MessageLoopWorkingMaxDelayTimer {
         Self(MessageLoopTimer::new(MAX_TIMER_DELAY_MS as i64))
     }
 }
+
+/// CEF asking for its message loop to be worked at once, as something an embedder can wait on.
+///
+/// bevy_cef works the loop once a frame, from the `Main` schedule. Much of what CEF does for a
+/// frame of a page (its own compositor's part, the hand-over of a painted picture) runs on the UI
+/// thread, which is the app's main thread, so between two frames it stands still. An embedder
+/// whose main thread waits for something else (Bevy's waits for its render thread at the end of
+/// every frame) can wait on this as well, and call `cef::do_message_loop_work()` on that thread
+/// each time it is signalled: CEF then gets on with its frame in time the app was not using.
+///
+/// One signal stands for any number of requests since the last one taken.
+pub fn work_wanted() -> async_channel::Receiver<()> {
+    work_wanted_channel().1.clone()
+}
+
+fn work_wanted_channel() -> &'static (async_channel::Sender<()>, async_channel::Receiver<()>) {
+    static CHANNEL: std::sync::OnceLock<(async_channel::Sender<()>, async_channel::Receiver<()>)> =
+        std::sync::OnceLock::new();
+    CHANNEL.get_or_init(|| async_channel::bounded(1))
+}
+
+/// CEF asked for work with no delay (from any thread).
+pub(crate) fn want_work() {
+    // (Full: a signal is waiting already.)
+    let _ = work_wanted_channel().0.try_send(());
+}

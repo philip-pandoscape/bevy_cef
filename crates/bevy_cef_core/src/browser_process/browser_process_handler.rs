@@ -110,6 +110,9 @@ impl ImplBrowserProcessHandler for BrowserProcessHandlerBuilder {
         let _ = self
             .message_loop_working_requester
             .send(MessageLoopTimer::new(delay_ms));
+        if delay_ms <= 0 {
+            crate::browser_process::message_pump::want_work();
+        }
     }
 
     #[inline]
