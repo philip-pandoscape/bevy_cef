@@ -3,14 +3,13 @@
 //! `WebviewDpiPlugin` maintains each webview's `WebviewDpr` component,
 //! seeding it from the host window at spawn and refreshing it when the
 //! host window's `scale_factor` changes (monitor move, OS DPI setting).
-//! The change is then committed to CEF via `notify_screen_info_changed`.
+//! The change is committed to CEF with the webview's size, in one resize
+//! (the webview plugin's `WebviewSet::CommitResize`).
 
 use crate::common::{HostWindow, WebviewDpr, WebviewSource};
 use crate::webview::WebviewSet;
 use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, WindowScaleFactorChanged};
-
-use bevy_cef_core::prelude::Browsers;
 
 pub struct WebviewDpiPlugin;
 
@@ -23,11 +22,6 @@ impl Plugin for WebviewDpiPlugin {
                 refresh_on_scale_factor_changed_system,
             )
                 .in_set(WebviewSet::DpiSeed),
-        );
-
-        app.add_systems(
-            Update,
-            commit_webview_dpr_system.in_set(WebviewSet::CommitResize),
         );
     }
 }
@@ -64,16 +58,6 @@ fn refresh_on_scale_factor_changed_system(
                 dpr.set_if_neq(WebviewDpr(event.scale_factor as f32));
             }
         }
-    }
-}
-
-fn commit_webview_dpr_system(
-    browsers: NonSend<Browsers>,
-    webviews: Query<(Entity, &WebviewDpr), Changed<WebviewDpr>>,
-) {
-    for (entity, dpr) in webviews.iter() {
-        browsers.set_dpr(&entity, dpr.0);
-        browsers.notify_screen_info_changed(&entity);
     }
 }
 

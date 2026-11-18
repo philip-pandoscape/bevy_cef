@@ -536,6 +536,24 @@ impl Browsers {
         }
     }
 
+    /// Commits a webview's size and, when it moved, its device scale factor together: both are
+    /// stored before CEF is told, so the page is laid out once, at the new size and scale.
+    ///
+    /// Told one after the other, CEF lays the page out at the new size and the old scale first,
+    /// and holds the second change until a picture of the first has come (one resize in flight at
+    /// a time). What a canvas painted while the scale moved was missing from the page's pictures
+    /// until it painted again.
+    pub fn resize_to(&self, webview: &Entity, size: Vec2, dpr: Option<f32>) {
+        if let Some(browser) = self.browsers.get(webview) {
+            browser.size.set(size);
+            if let Some(dpr) = dpr {
+                browser.dpr.set(dpr);
+                browser.host.notify_screen_info_changed();
+            }
+            browser.host.was_resized();
+        }
+    }
+
     /// Update the stored device scale factor for the webview's backing browser.
     ///
     /// Must be called before [`Self::notify_screen_info_changed`] — otherwise

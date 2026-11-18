@@ -36,8 +36,8 @@ pub(crate) mod webview_sprite;
 
 pub mod prelude {
     pub use crate::webview::{
-        BeginFrameInterval, RequestCloseDevtool, RequestShowDevTool, WebviewPlugin, mesh::*,
-        texture_target::*, ui::WebviewUiMaterial,
+        BeginFrameInterval, RequestCloseDevtool, RequestShowDevTool, WebviewPlugin, WebviewSet,
+        mesh::*, texture_target::*, ui::WebviewUiMaterial,
     };
 }
 
@@ -121,7 +121,7 @@ pub enum WebviewSet {
     DerivePipeline,
     /// Creates CEF browser instances.
     CreateBrowser,
-    /// Commits WebviewSize changes to CEF via browsers.resize().
+    /// Commits WebviewSize and WebviewDpr changes to CEF together, via browsers.resize_to().
     CommitResize,
 }
 
@@ -292,7 +292,7 @@ impl BrowserCreation<'_, '_> {
     }
 }
 
-fn any_resized(webviews: Query<Entity, Changed<WebviewSize>>) -> bool {
+fn any_resized(webviews: Query<Entity, Or<(Changed<WebviewSize>, Changed<WebviewDpr>)>>) -> bool {
     !webviews.is_empty()
 }
 
@@ -364,12 +364,17 @@ fn navigate_on_source_change(
     }
 }
 
+/// Commits each webview's new size and device scale factor to CEF, the two together
+/// (`Browsers::resize_to`), whichever of them moved.
 fn resize(
     browsers: NonSend<Browsers>,
-    webviews: Query<(Entity, &WebviewSize), Changed<WebviewSize>>,
+    webviews: Query<
+        (Entity, Ref<WebviewSize>, Ref<WebviewDpr>),
+        Or<(Changed<WebviewSize>, Changed<WebviewDpr>)>,
+    >,
 ) {
-    for (webview, size) in webviews.iter() {
-        browsers.resize(&webview, size.0);
+    for (webview, size, dpr) in webviews.iter() {
+        browsers.resize_to(&webview, size.0, dpr.is_changed().then_some(dpr.0));
     }
 }
 
